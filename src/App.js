@@ -201,7 +201,7 @@ function App() {
           if (!line.trim()) return;
           const columns = line.split(/\t|,|;/); 
           
-          if (columns.length >= 5) {
+                    if (columns.length >= 5) {
             const day = columns[0]?.trim();
             const hour = columns[1]?.trim();
             const className = columns[2]?.trim();
@@ -239,7 +239,7 @@ function App() {
   };
 
   const handleSecretClick = () => {
-    const password = prompt("Entrez le mot de passe administrateur pour ouvrir le volet :");
+    const password = prompt("Entrez le mot de passe administrateur : ");
     if (password === "MonMotDePasseSecret123") {
       setShowAdminPanel(true);
     } else if (password !== null) {
@@ -278,16 +278,17 @@ function App() {
           {['professors', 'classes', 'rooms'].map((tab) => (
             <button
               key={tab}
-              onClick={() => {setSelectedEntity(entity);setIsModalOpen(true); }}
+              onClick={() => setActiveTab(tab)}
               className={`py-2 px-4 font-medium text-sm border-b-2 capitalize ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}
             >
               {tab === 'professors' ? 'Professeurs' : tab === 'classes' ? 'Classes' : 'Locaux'}
             </button>
           ))}
         </div>
+
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {Object.keys(allSchedules[activeTab] || {}).sort().map((entity) => (
-              onClick={() => { setSelectedEntity(entity); setIsModalOpen(true); }}
+             { setSelectedEntity(entity); setIsModalOpen(true); }}
               className="p-3 text-center bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded-lg font-medium text-gray-700 transition"
             >
               {entity}
@@ -297,7 +298,6 @@ function App() {
             </button>
           ))}
         </div>
-   
       </main>
 
       {isModalOpen && selectedEntity && (

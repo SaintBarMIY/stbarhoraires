@@ -285,7 +285,6 @@ function App() {
             </button>
           ))}
         </div>
-
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {Object.keys(allSchedules[activeTab] || {}).sort().map((entity) => (
              { setSelectedEntity(entity); setIsModalOpen(true); }}
@@ -298,8 +297,7 @@ function App() {
             </button>
           ))}
         </div>
-
-
+   
       </main>
 
       {isModalOpen && selectedEntity && (

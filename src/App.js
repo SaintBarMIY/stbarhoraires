@@ -1,4 +1,3 @@
-```jsx
 /* global __initial_auth_token */
 
 import React, { useEffect, useState } from 'react';
@@ -1901,4 +1900,3 @@ function App() {
 
 
 export default App;
-```

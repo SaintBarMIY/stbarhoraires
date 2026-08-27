@@ -278,7 +278,10 @@ function App() {
           {['professors', 'classes', 'rooms'].map((tab) => (
             <button
               key={tab}
-              onClick={() => { setSelectedEntity(entity); setIsModalOpen(true); }}
+              onClick={() => {
+                setSelectedEntity(entity);
+                setIsModalOpen(true);
+                            }}
               className={`py-2 px-4 font-medium text-sm border-b-2 capitalize ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}
             >
               {tab === 'professors' ? 'Professeurs' : tab === 'classes' ? 'Classes' : 'Locaux'}

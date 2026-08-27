@@ -303,7 +303,7 @@ function App() {
       </main>
 
       {isModalOpen && selectedEntity && (
-         { setIsModalOpen(false); setSelectedEntity(null); }}
+        onClose={() => { setIsModalOpen(false); setSelectedEntity(null); }}
         />
       )}
     </div>

@@ -1,7 +1,7 @@
 ```jsx
 /* global __initial_auth_token */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import {
   initializeApp
@@ -23,16 +23,16 @@ import {
 
 
 // ============================================================
-// CONSTANTES
+// CONFIGURATION
 // ============================================================
 
-const UNKNOWN_PROFESSOR_KEY = 'INCONNU';
+const UNKNOWN_PROFESSOR = 'INCONNU';
 
 const DAYS = ['1', '2', '3', '4', '5'];
 
 const HOURS = ['1', '2', '3', '4', '5', '6', '7', '8'];
 
-const dayMap = {
+const DAY_NAMES = {
   '1': 'Lundi',
   '2': 'Mardi',
   '3': 'Mercredi',
@@ -40,7 +40,7 @@ const dayMap = {
   '5': 'Vendredi'
 };
 
-const hourMap = {
+const HOUR_NAMES = {
   '1': '8h20-9h10',
   '2': '9h10-10h00',
   '3': '10h20-11h10',
@@ -53,15 +53,12 @@ const hourMap = {
 
 
 // ============================================================
-// NETTOYAGE DES VALEURS
+// NETTOYAGE D'UNE VALEUR
 // ============================================================
 
-const cleanValue = (value) => {
+function cleanValue(value) {
 
-  if (
-    value === undefined ||
-    value === null
-  ) {
+  if (value === null || value === undefined) {
     return '';
   }
 
@@ -69,39 +66,40 @@ const cleanValue = (value) => {
     .trim()
     .replace(/^"|"$/g, '')
     .trim();
-};
+}
 
 
 // ============================================================
-// LECTURE D'UNE LIGNE CSV
-// ============================================================
+// LECTURE CSV
 //
-// Cette fonction accepte par exemple :
-//
+// Exemple :
 // 6003,"6B","SIC","MAT6","F12",1,7,,
 //
-// et conserve correctement les champs vides.
-//
+// Résultat :
+// 6003
+// 6B
+// SIC
+// MAT6
+// F12
+// 1
+// 7
+// ''
+// ''
+// ============================================================
 
-const parseCSVLine = (line) => {
+function parseCSVLine(line) {
 
-  const columns = [];
+  const result = [];
 
   let current = '';
 
   let insideQuotes = false;
 
+  for (let i = 0; i < line.length; i += 1) {
 
-  for (
-    let i = 0;
-    i < line.length;
-    i++
-  ) {
+    const character = line[i];
 
-    const char = line[i];
-
-
-    if (char === '"') {
+    if (character === '"') {
 
       if (
         insideQuotes &&
@@ -110,125 +108,110 @@ const parseCSVLine = (line) => {
 
         current += '"';
 
-        i++;
+        i += 1;
 
       } else {
 
-        insideQuotes =
-          !insideQuotes;
+        insideQuotes = !insideQuotes;
 
       }
 
-      continue;
-    }
-
-
-    if (
-      char === ',' &&
+    } else if (
+      character === ',' &&
       !insideQuotes
     ) {
 
-      columns.push(
-        current.trim()
-      );
+      result.push(current.trim());
 
       current = '';
 
     } else {
 
-      current += char;
+      current += character;
 
     }
-
   }
 
+  result.push(current.trim());
 
-  columns.push(
-    current.trim()
-  );
-
-
-  return columns;
-};
+  return result;
+}
 
 
 // ============================================================
 // CONVERSION DES SETS
 // ============================================================
 
-const convertSetsToArrays = (obj) => {
+function convertSetsToArrays(value) {
 
-  if (Array.isArray(obj)) {
+  if (Array.isArray(value)) {
 
-    return obj.map(
+    return value.map(
       convertSetsToArrays
     );
 
   }
 
-
   if (
-    typeof obj === 'object' &&
-    obj !== null
+    value !== null &&
+    typeof value === 'object'
   ) {
 
-    const newObj = {};
+    const result = {};
 
+    Object.keys(value).forEach(
+      function(key) {
 
-    for (const key in obj) {
+        if (value[key] instanceof Set) {
 
-      if (
-        Object.prototype.hasOwnProperty.call(
-          obj,
-          key
-        )
-      ) {
+          result[key] =
+            Array.from(value[key]);
 
-        newObj[key] =
-          obj[key] instanceof Set
-            ? Array.from(obj[key])
-            : convertSetsToArrays(
-                obj[key]
-              );
+        } else {
+
+          result[key] =
+            convertSetsToArrays(
+              value[key]
+            );
+
+        }
 
       }
+    );
 
-    }
-
-
-    return newObj;
-
+    return result;
   }
 
-
-  return obj;
-};
+  return value;
+}
 
 
 // ============================================================
 // MODAL EMPLOI DU TEMPS
 // ============================================================
 
-const ScheduleModal = ({
-  entityName,
-  scheduleType,
-  scheduleData,
-  onClose
-}) => {
+function ScheduleModal(props) {
 
-  const scheduleGrid = {};
+  const {
+    entityName,
+    scheduleType,
+    scheduleData,
+    onClose
+  } = props;
+
+
+  const grid = {};
 
 
   DAYS.forEach(
-    (day) => {
+    function(day) {
 
-      scheduleGrid[day] = {};
-
+      grid[day] = {};
 
       HOURS.forEach(
-        (hour) => {
+        function(hour) {
 
-          scheduleGrid[day][hour] = [];
+          grid[day][hour] = [];
 
         }
       );
@@ -237,18 +220,14 @@ const ScheduleModal = ({
   );
 
 
-  // ----------------------------------------------------------
-  // Place toutes les entrées dans la grille
-  // ----------------------------------------------------------
-
   scheduleData.forEach(
-    (entry) => {
+    function(entry) {
 
       const day =
-        String(entry.day);
+        String(entry.day || '');
 
       const hour =
-        String(entry.hour);
+        String(entry.hour || '');
 
 
       if (
@@ -256,7 +235,7 @@ const ScheduleModal = ({
         HOURS.includes(hour)
       ) {
 
-        scheduleGrid[day][hour].push(
+        grid[day][hour].push(
           entry
         );
 
@@ -266,49 +245,36 @@ const ScheduleModal = ({
   );
 
 
-  // ----------------------------------------------------------
-  // Titre du modal
-  // ----------------------------------------------------------
-
-  let modalTitle = '';
+  let title = '';
 
 
-  switch (scheduleType) {
+  if (scheduleType === 'professors') {
 
-    case 'professors':
+    title =
+      'Emploi du temps de ' +
+      entityName;
 
-      modalTitle =
-        'Emploi du temps de ' +
-        entityName;
+  } else if (
+    scheduleType === 'classes'
+  ) {
 
-      break;
+    title =
+      'Emploi du temps de la classe ' +
+      entityName;
 
+  } else if (
+    scheduleType === 'rooms'
+  ) {
 
-    case 'classes':
+    title =
+      'Emploi du temps du local ' +
+      entityName;
 
-      modalTitle =
-        'Emploi du temps de la classe ' +
-        entityName;
+  } else {
 
-      break;
-
-
-    case 'rooms':
-
-      modalTitle =
-        'Emploi du temps du local ' +
-        entityName;
-
-      break;
-
-
-    default:
-
-      modalTitle =
-        'Détails pour ' +
-        entityName;
-
-      break;
+    title =
+      'Détails pour ' +
+      entityName;
 
   }
 
@@ -317,83 +283,93 @@ const ScheduleModal = ({
 
     <div
       className="
-        fixed inset-0
-        bg-gray-600 bg-opacity-75
+        fixed inset-0 z-50
+        bg-black bg-opacity-50
         flex items-center justify-center
-        p-4 z-50
+        p-4
       "
     >
 
       <div
         className="
-          bg-white rounded-lg shadow-xl
-          p-6 w-full max-w-6xl mx-auto
+          bg-white
+          rounded-lg
+          shadow-xl
+          w-full
+          max-w-6xl
+          max-h-[90vh]
+          p-6
+          overflow-hidden
         "
       >
 
-        {/* ==================================================
-            TITRE
-            ================================================== */}
-
         <div
           className="
-            flex justify-between items-center
-            border-b pb-3 mb-4
+            flex
+            justify-between
+            items-center
+            border-b
+            pb-3
+            mb-4
           "
         >
 
           <h2
             className="
-              text-2xl font-bold
+              text-2xl
+              font-bold
               text-gray-800
             "
           >
-            {modalTitle}
+            {title}
           </h2>
 
 
           <button
+            type="button"
             onClick={onClose}
             className="
               text-gray-500
-              hover:text-gray-700
-              text-2xl font-semibold
+              hover:text-gray-800
+              text-3xl
+              font-bold
             "
           >
-            &times;
+            X
           </button>
 
         </div>
 
 
-        {/* ==================================================
-            TABLEAU
-            ================================================== */}
+        {scheduleData.length === 0 ? (
 
-        {scheduleData.length > 0 ? (
+          <p className="text-gray-600">
+            Aucun emploi du temps trouvé.
+          </p>
+
+        ) : (
 
           <div
             className="
-              overflow-x-auto
+              overflow-auto
               max-h-[70vh]
-              pb-4
             "
           >
 
             <table
               className="
-                min-w-full
-                bg-white
-                border border-gray-200
-                rounded-lg
-                table-fixed
+                w-full
+                border-collapse
+                border
+                border-gray-300
               "
             >
 
               <thead
                 className="
                   bg-gray-100
-                  sticky top-0 z-10
+                  sticky
+                  top-0
                 "
               >
 
@@ -401,38 +377,37 @@ const ScheduleModal = ({
 
                   <th
                     className="
-                      py-2 px-3
-                      text-left
-                      text-xs font-semibold
-                      text-gray-600
-                      uppercase
-                      tracking-wider
+                      border
+                      border-gray-300
+                      p-2
+                      text-sm
                       w-28
                     "
                   >
-                    Heure / Jour
+                    Heure
                   </th>
 
 
                   {DAYS.map(
-                    (dayKey) => (
+                    function(day) {
 
-                      <th
-                        key={dayKey}
-                        className="
-                          py-2 px-3
-                          text-left
-                          text-xs font-semibold
-                          text-gray-600
-                          uppercase
-                          tracking-wider
-                          w-1/5
-                        "
-                      >
-                        {dayMap[dayKey]}
-                      </th>
+                      return (
 
-                    )
+                        <th
+                          key={day}
+                          className="
+                            border
+                            border-gray-300
+                            p-2
+                            text-sm
+                          "
+                        >
+                          {DAY_NAMES[day]}
+                        </th>
+
+                      );
+
+                    }
                   )}
 
                 </tr>
@@ -440,119 +415,108 @@ const ScheduleModal = ({
               </thead>
 
 
-              <tbody
-                className="
-                  divide-y
-                  divide-gray-200
-                "
-              >
+              <tbody>
 
                 {HOURS.map(
-                  (hourKey) => (
+                  function(hour) {
 
-                    <tr
-                      key={hourKey}
-                      className="align-top"
-                    >
+                    return (
 
-                      <td
-                        className="
-                          py-2 px-3
-                          text-sm
-                          text-gray-800
-                          font-medium
-                          border-r
-                          border-gray-200
-                          bg-gray-50
-                        "
+                      <tr
+                        key={hour}
                       >
-                        {hourMap[hourKey]}
-                      </td>
+
+                        <td
+                          className="
+                            border
+                            border-gray-300
+                            p-2
+                            text-sm
+                            font-semibold
+                            bg-gray-50
+                            align-top
+                          "
+                        >
+                          {HOUR_NAMES[hour]}
+                        </td>
 
 
-                      {DAYS.map(
-                        (dayKey) => {
+                        {DAYS.map(
+                          function(day) {
 
-                          const entries =
-                            scheduleGrid[
-                              dayKey
-                            ][
-                              hourKey
-                            ];
+                            const entries =
+                              grid[day][hour];
 
 
-                          return (
+                            return (
 
-                            <td
-                              key={
-                                dayKey +
-                                '-' +
-                                hourKey
-                              }
-                              className="
-                                py-2 px-3
-                                text-sm
-                                text-gray-800
-                                align-top
-                                border-r
-                                border-gray-200
-                              "
-                            >
+                              <td
+                                key={
+                                  day +
+                                  '-' +
+                                  hour
+                                }
+                                className="
+                                  border
+                                  border-gray-300
+                                  p-2
+                                  text-sm
+                                  align-top
+                                "
+                              >
 
-                              {entries.length === 0 ? (
+                                {entries.length === 0 ? (
 
-                                <span
-                                  className="
-                                    text-gray-300
-                                  "
-                                >
-                                  —
-                                </span>
+                                  <span
+                                    className="
+                                      text-gray-300
+                                    "
+                                  >
+                                    -
+                                  </span>
 
-                              ) : (
+                                ) : (
 
-                                <div
-                                  className="
-                                    space-y-2
-                                  "
-                                >
+                                  <div
+                                    className="
+                                      space-y-2
+                                    "
+                                  >
 
-                                  {entries.map(
-                                    (
-                                      entry,
-                                      index
-                                    ) => (
+                                    {entries.map(
+                                      function(
+                                        entry,
+                                        index
+                                      ) {
 
-                                      <div
-                                        key={
-                                          entry.day +
-                                          '-' +
-                                          entry.hour +
-                                          '-' +
-                                          index
-                                        }
-                                        className="
-                                          pb-2
-                                          border-b
-                                          border-gray-100
-                                          last:border-b-0
-                                        "
-                                      >
+                                        return (
 
-                                        {/* ==================
-                                            PROFESSEUR
-                                            ================== */}
-
-                                        {scheduleType ===
-                                          'professors' && (
-
-                                          <>
+                                          <div
+                                            key={
+                                              day +
+                                              '-' +
+                                              hour +
+                                              '-' +
+                                              index
+                                            }
+                                            className="
+                                              border-b
+                                              border-gray-200
+                                              pb-2
+                                              last:border-b-0
+                                            "
+                                          >
 
                                             <div
-                                              className="
-                                                font-semibold
-                                                text-blue-800
-                                              "
+                                              className={
+                                                scheduleType ===
+                                                'professors'
+                                                  ? 'font-semibold text-blue-800'
+                                                  : scheduleType ===
+                                                    'classes'
+                                                  ? 'font-semibold text-green-800'
+                                                  : 'font-semibold text-purple-800'
+                                              }
                                             >
                                               {
                                                 entry.course ||
@@ -561,164 +525,136 @@ const ScheduleModal = ({
                                             </div>
 
 
-                                            <div
-                                              className="
-                                                text-gray-700
-                                                text-xs
-                                              "
-                                            >
-                                              Classe :{' '}
-                                              {
-                                                entry.class ||
-                                                '—'
-                                              }
-                                            </div>
+                                            {scheduleType ===
+                                              'professors' && (
+
+                                              <>
+
+                                                <div
+                                                  className="
+                                                    text-xs
+                                                    text-gray-700
+                                                  "
+                                                >
+                                                  Classe :{' '}
+                                                  {
+                                                    entry.class ||
+                                                    '-'
+                                                  }
+                                                </div>
+
+                                                <div
+                                                  className="
+                                                    text-xs
+                                                    text-gray-700
+                                                  "
+                                                >
+                                                  Local :{' '}
+                                                  {
+                                                    entry.room ||
+                                                    '-'
+                                                  }
+                                                </div>
+
+                                              </>
+
+                                            )}
 
 
-                                            <div
-                                              className="
-                                                text-gray-700
-                                                text-xs
-                                              "
-                                            >
-                                              Local :{' '}
-                                              {
-                                                entry.room ||
-                                                '—'
-                                              }
-                                            </div>
+                                            {scheduleType ===
+                                              'classes' && (
 
-                                          </>
+                                              <>
 
-                                        )}
+                                                <div
+                                                  className="
+                                                    text-xs
+                                                    text-gray-700
+                                                  "
+                                                >
+                                                  Prof :{' '}
+                                                  {
+                                                    entry.professorName ||
+                                                    '-'
+                                                  }
+                                                </div>
 
+                                                <div
+                                                  className="
+                                                    text-xs
+                                                    text-gray-700
+                                                  "
+                                                >
+                                                  Local :{' '}
+                                                  {
+                                                    entry.room ||
+                                                    '-'
+                                                  }
+                                                </div>
 
-                                        {/* ==================
-                                            CLASSE
-                                            ================== */}
+                                              </>
 
-                                        {scheduleType ===
-                                          'classes' && (
-
-                                          <>
-
-                                            <div
-                                              className="
-                                                font-semibold
-                                                text-green-800
-                                              "
-                                            >
-                                              {
-                                                entry.course ||
-                                                'Cours inconnu'
-                                              }
-                                            </div>
+                                            )}
 
 
-                                            <div
-                                              className="
-                                                text-gray-700
-                                                text-xs
-                                              "
-                                            >
-                                              Prof :{' '}
-                                              {
-                                                entry.professorName ||
-                                                '—'
-                                              }
-                                            </div>
+                                            {scheduleType ===
+                                              'rooms' && (
 
+                                              <>
 
-                                            <div
-                                              className="
-                                                text-gray-700
-                                                text-xs
-                                              "
-                                            >
-                                              Local :{' '}
-                                              {
-                                                entry.room ||
-                                                '—'
-                                              }
-                                            </div>
+                                                <div
+                                                  className="
+                                                    text-xs
+                                                    text-gray-700
+                                                  "
+                                                >
+                                                  Prof :{' '}
+                                                  {
+                                                    entry.professorName ||
+                                                    '-'
+                                                  }
+                                                </div>
 
-                                          </>
+                                                <div
+                                                  className="
+                                                    text-xs
+                                                    text-gray-700
+                                                  "
+                                                >
+                                                  Classe :{' '}
+                                                  {
+                                                    entry.class ||
+                                                    '-'
+                                                  }
+                                                </div>
 
-                                        )}
+                                              </>
 
+                                            )}
 
-                                        {/* ==================
-                                            LOCAL
-                                            ================== */}
+                                          </div>
 
-                                        {scheduleType ===
-                                          'rooms' && (
+                                        );
 
-                                          <>
+                                      }
+                                    )}
 
-                                            <div
-                                              className="
-                                                font-semibold
-                                                text-purple-800
-                                              "
-                                            >
-                                              {
-                                                entry.course ||
-                                                'Cours inconnu'
-                                              }
-                                            </div>
+                                  </div>
 
+                                )}
 
-                                            <div
-                                              className="
-                                                text-gray-700
-                                                text-xs
-                                              "
-                                            >
-                                              Prof :{' '}
-                                              {
-                                                entry.professorName ||
-                                                '—'
-                                              }
-                                            </div>
+                              </td>
 
+                            );
 
-                                            <div
-                                              className="
-                                                text-gray-700
-                                                text-xs
-                                              "
-                                            >
-                                              Classe :{' '}
-                                              {
-                                                entry.class ||
-                                                '—'
-                                              }
-                                            </div>
+                          }
+                        )}
 
-                                          </>
+                      </tr>
 
-                                        )}
+                    );
 
-                                      </div>
-
-                                    )
-                                  )}
-
-                                </div>
-
-                              )}
-
-                            </td>
-
-                          );
-
-                        }
-                      )}
-
-                    </tr>
-
-                  )
+                  }
                 )}
 
               </tbody>
@@ -727,41 +663,28 @@ const ScheduleModal = ({
 
           </div>
 
-        ) : (
-
-          <p
-            className="
-              text-gray-600
-            "
-          >
-            Aucun emploi du temps trouvé
-            pour cette entité.
-          </p>
-
         )}
 
 
-        {/* ==================================================
-            BOUTON FERMER
-            ================================================== */}
-
         <div
           className="
-            flex justify-end
+            flex
+            justify-end
             mt-4
           "
         >
 
           <button
+            type="button"
             onClick={onClose}
             className="
-              bg-blue-500
-              hover:bg-blue-600
+              bg-blue-600
+              hover:bg-blue-700
               text-white
               font-bold
-              py-2 px-4
-              rounded-lg
-              shadow-md
+              py-2
+              px-4
+              rounded
             "
           >
             Fermer
@@ -774,8 +697,7 @@ const ScheduleModal = ({
     </div>
 
   );
-
-};
+}
 
 
 // ============================================================
@@ -794,13 +716,9 @@ function App() {
     allSchedules,
     setAllSchedules
   ] = useState({
-
     professors: {},
-
     classes: {},
-
     rooms: {}
-
   });
 
 
@@ -819,9 +737,7 @@ function App() {
   const [
     activeTab,
     setActiveTab
-  ] = useState(
-    'professors'
-  );
+  ] = useState('professors');
 
 
   const [
@@ -863,37 +779,23 @@ function App() {
 
 
   // ==========================================================
-  // INITIALISATION FIREBASE
+  // FIREBASE
   // ==========================================================
 
   useEffect(
-    () => {
+    function() {
 
       try {
 
-        const firebaseConfig =
-          JSON.parse(
-
-            typeof process.env
-              .REACT_APP_FIREBASE_CONFIG !==
-              'undefined'
-
-              ? process.env
-                  .REACT_APP_FIREBASE_CONFIG
-
-              : '{}'
-
-          );
+        const configText =
+          process.env
+            .REACT_APP_FIREBASE_CONFIG;
 
 
-        if (
-          Object.keys(
-            firebaseConfig
-          ).length === 0
-        ) {
+        if (!configText) {
 
           setError(
-            'Erreur de configuration de la base de données.'
+            'REACT_APP_FIREBASE_CONFIG est absente dans Netlify.'
           );
 
           setLoading(false);
@@ -903,29 +805,35 @@ function App() {
         }
 
 
+        const firebaseConfig =
+          JSON.parse(
+            configText
+          );
+
+
         const app =
           initializeApp(
             firebaseConfig
           );
 
 
-        const authInstance =
+        const auth =
           getAuth(app);
 
 
-        const firestoreInstance =
+        const firestore =
           getFirestore(app);
 
 
         setDb(
-          firestoreInstance
+          firestore
         );
 
 
-        const unsubscribeAuth =
+        const unsubscribe =
           onAuthStateChanged(
-            authInstance,
-            () => {
+            auth,
+            function() {
 
               setIsAuthReady(
                 true
@@ -942,13 +850,13 @@ function App() {
         ) {
 
           signInWithCustomToken(
-            authInstance,
+            auth,
             __initial_auth_token
           ).catch(
-            () => {
+            function() {
 
-              signInAnonymously(
-                authInstance
+              return signInAnonymously(
+                auth
               );
 
             }
@@ -957,15 +865,15 @@ function App() {
         } else {
 
           signInAnonymously(
-            authInstance
+            auth
           );
 
         }
 
 
-        return () => {
+        return function() {
 
-          unsubscribeAuth();
+          unsubscribe();
 
         };
 
@@ -974,7 +882,8 @@ function App() {
         console.error(err);
 
         setError(
-          "Erreur d'initialisation."
+          'Erreur Firebase : ' +
+          err.message
         );
 
         setLoading(false);
@@ -987,23 +896,20 @@ function App() {
 
 
   // ==========================================================
-  // ECOUTE FIRESTORE
+  // FIRESTORE
   // ==========================================================
 
   useEffect(
-    () => {
+    function() {
 
       if (
         !db ||
         !isAuthReady
       ) {
 
-        return;
+        return undefined;
 
       }
-
-
-      setLoading(true);
 
 
       const scheduleRef =
@@ -1019,33 +925,33 @@ function App() {
 
           scheduleRef,
 
-          (docSnap) => {
+          function(snapshot) {
 
             if (
-              docSnap.exists()
+              snapshot.exists()
             ) {
 
-              const fileData =
-                docSnap.data();
+              const data =
+                snapshot.data();
 
 
               if (
-                fileData.schedules
+                data.schedules
               ) {
 
                 setAllSchedules(
-                  fileData.schedules
+                  data.schedules
                 );
 
               }
 
 
               if (
-                fileData.professorHours
+                data.professorHours
               ) {
 
                 setProfessorHours(
-                  fileData.professorHours
+                  data.professorHours
                 );
 
               }
@@ -1057,13 +963,13 @@ function App() {
 
           },
 
-
-          (err) => {
+          function(err) {
 
             console.error(err);
 
             setError(
-              'Impossible de charger les plannings.'
+              'Impossible de charger les plannings : ' +
+              err.message
             );
 
             setLoading(false);
@@ -1073,8 +979,11 @@ function App() {
         );
 
 
-      return () =>
+      return function() {
+
         unsubscribe();
+
+      };
 
     },
     [
@@ -1085,430 +994,404 @@ function App() {
 
 
   // ==========================================================
-  // IMPORT GPU001.TXT
+  // IMPORT DU FICHIER
   // ==========================================================
 
-  const handleFileUpload =
-    (event) => {
+  function handleFileUpload(event) {
 
-      const file =
-        event.target.files &&
-        event.target.files[0];
-
-
-      if (
-        !file ||
-        !db
-      ) {
-
-        return;
-
-      }
+    const file =
+      event.target.files &&
+      event.target.files[0];
 
 
-      setFileName(
-        file.name
+    if (!file) {
+
+      return;
+
+    }
+
+
+    if (!db) {
+
+      setError(
+        'La base de données n est pas disponible.'
       );
 
+      return;
 
-      const reader =
-        new FileReader();
+    }
 
 
-      reader.onload =
-        async (e) => {
+    setFileName(
+      file.name
+    );
 
-          try {
 
-            setError(null);
+    const reader =
+      new FileReader();
 
 
-            const textContent =
-              String(
-                e.target.result
-              );
+    reader.onload =
+      async function(e) {
 
+        try {
 
-            const schedules = {
+          setError(null);
 
-              professors: {},
 
-              classes: {},
-
-              rooms: {}
-
-            };
-
-
-            const profHoursCounter =
-              {};
-
-
-            let importedLines = 0;
-
-            let ignoredLines = 0;
-
-
-            const lines =
-              textContent.split(
-                /\r?\n/
-              );
-
-
-            lines.forEach(
-              (line) => {
-
-                if (
-                  !line.trim()
-                ) {
-
-                  return;
-
-                }
-
-
-                const columns =
-                  parseCSVLine(
-                    line
-                  );
-
-
-                /*
-                 * FORMAT GPU001
-                 *
-                 * 0 = identifiant
-                 * 1 = classe
-                 * 2 = professeur
-                 * 3 = cours
-                 * 4 = local
-                 * 5 = jour
-                 * 6 = heure
-                 *
-                 * Exemple :
-                 *
-                 * 6003,"6B","SIC","MAT6","F12",1,7,,
-                 *
-                 */
-
-
-                if (
-                  columns.length < 7
-                ) {
-
-                  ignoredLines++;
-
-                  return;
-
-                }
-
-
-                const className =
-                  cleanValue(
-                    columns[1]
-                  ) ||
-                  'Classe inconnue';
-
-
-                const profSigle =
-                  cleanValue(
-                    columns[2]
-                  ) ||
-                  UNKNOWN_PROFESSOR_KEY;
-
-
-                const course =
-                  cleanValue(
-                    columns[3]
-                  ) ||
-                  'Cours inconnu';
-
-
-                const room =
-                  cleanValue(
-                    columns[4]
-                  ) ||
-                  'N/A';
-
-
-                const day =
-                  cleanValue(
-                    columns[5]
-                  );
-
-
-                const hour =
-                  cleanValue(
-                    columns[6]
-                  );
-
-
-                // ------------------------------------------------
-                // JOUR
-                // ------------------------------------------------
-
-                if (
-                  !DAYS.includes(day)
-                ) {
-
-                  ignoredLines++;
-
-                  return;
-
-                }
-
-
-                // ------------------------------------------------
-                // HEURE
-                // ------------------------------------------------
-
-                if (
-                  !HOURS.includes(hour)
-                ) {
-
-                  ignoredLines++;
-
-                  return;
-
-                }
-
-
-                const entry = {
-
-                  day: day,
-
-                  hour: hour,
-
-                  class: className,
-
-                  professorName:
-                    profSigle,
-
-                  course: course,
-
-                  room: room
-
-                };
-
-
-                // =================================================
-                // PROFESSEURS
-                // =================================================
-
-                if (
-                  !schedules
-                    .professors[
-                      profSigle
-                    ]
-                ) {
-
-                  schedules
-                    .professors[
-                      profSigle
-                    ] = [];
-
-                }
-
-
-                schedules
-                  .professors[
-                    profSigle
-                  ]
-                  .push(
-                    entry
-                  );
-
-
-                // =================================================
-                // CLASSES
-                // =================================================
-
-                if (
-                  !schedules
-                    .classes[
-                      className
-                    ]
-                ) {
-
-                  schedules
-                    .classes[
-                      className
-                    ] = [];
-
-                }
-
-
-                schedules
-                  .classes[
-                    className
-                  ]
-                  .push(
-                    entry
-                  );
-
-
-                // =================================================
-                // LOCAUX
-                // =================================================
-
-                if (
-                  !schedules
-                    .rooms[
-                      room
-                    ]
-                ) {
-
-                  schedules
-                    .rooms[
-                      room
-                    ] = [];
-
-                }
-
-
-                schedules
-                  .rooms[
-                    room
-                  ]
-                  .push(
-                    entry
-                  );
-
-
-                // =================================================
-                // HEURES DU PROFESSEUR
-                // =================================================
-
-                profHoursCounter[
-                  profSigle
-                ] =
-                  (
-                    profHoursCounter[
-                      profSigle
-                    ] || 0
-                  ) + 1;
-
-
-                importedLines++;
-
-              }
+          const text =
+            String(
+              e.target.result || ''
             );
 
 
-            if (
-              importedLines === 0
-            ) {
+          const schedules = {
 
-              throw new Error(
-                'Aucune ligne valide trouvée dans le fichier.'
+            professors: {},
+
+            classes: {},
+
+            rooms: {}
+
+          };
+
+
+          const hours =
+            {};
+
+
+          let imported =
+            0;
+
+
+          let ignored =
+            0;
+
+
+          const lines =
+            text.split(
+              /\r?\n/
+            );
+
+
+          lines.forEach(
+            function(line) {
+
+              if (!line.trim()) {
+
+                return;
+
+              }
+
+
+              const columns =
+                parseCSVLine(
+                  line
+                );
+
+
+              /*
+               * GPU001.TXT
+               *
+               * 0 = numero
+               * 1 = classe
+               * 2 = professeur
+               * 3 = cours
+               * 4 = local
+               * 5 = jour
+               * 6 = heure
+               *
+               * Exemple :
+               *
+               * 6003,"6B","SIC","MAT6","F12",1,7,,
+               */
+
+
+              if (
+                columns.length < 7
+              ) {
+
+                ignored += 1;
+
+                return;
+
+              }
+
+
+              const className =
+                cleanValue(
+                  columns[1]
+                ) ||
+                'Classe inconnue';
+
+
+              const professor =
+                cleanValue(
+                  columns[2]
+                ) ||
+                UNKNOWN_PROFESSOR;
+
+
+              const course =
+                cleanValue(
+                  columns[3]
+                ) ||
+                'Cours inconnu';
+
+
+              const room =
+                cleanValue(
+                  columns[4]
+                ) ||
+                'N/A';
+
+
+              const day =
+                cleanValue(
+                  columns[5]
+                );
+
+
+              const hour =
+                cleanValue(
+                  columns[6]
+                );
+
+
+              if (
+                !DAYS.includes(day) ||
+                !HOURS.includes(hour)
+              ) {
+
+                ignored += 1;
+
+                return;
+
+              }
+
+
+              const entry = {
+
+                day: day,
+
+                hour: hour,
+
+                class: className,
+
+                professorName: professor,
+
+                course: course,
+
+                room: room
+
+              };
+
+
+              // --------------------------------------------------
+              // PROFESSEURS
+              // --------------------------------------------------
+
+              if (
+                !schedules.professors[
+                  professor
+                ]
+              ) {
+
+                schedules.professors[
+                  professor
+                ] = [];
+
+              }
+
+
+              schedules.professors[
+                professor
+              ].push(
+                entry
               );
+
+
+              // --------------------------------------------------
+              // CLASSES
+              // --------------------------------------------------
+
+              if (
+                !schedules.classes[
+                  className
+                ]
+              ) {
+
+                schedules.classes[
+                  className
+                ] = [];
+
+              }
+
+
+              schedules.classes[
+                className
+              ].push(
+                entry
+              );
+
+
+              // --------------------------------------------------
+              // LOCAUX
+              // --------------------------------------------------
+
+              if (
+                !schedules.rooms[
+                  room
+                ]
+              ) {
+
+                schedules.rooms[
+                  room
+                ] = [];
+
+              }
+
+
+              schedules.rooms[
+                room
+              ].push(
+                entry
+              );
+
+
+              // --------------------------------------------------
+              // NOMBRE D HEURES
+              // --------------------------------------------------
+
+              if (
+                hours[professor] ===
+                undefined
+              ) {
+
+                hours[professor] = 0;
+
+              }
+
+
+              hours[professor] += 1;
+
+
+              imported += 1;
 
             }
+          );
 
 
-            // ====================================================
-            // FIRESTORE
-            // ====================================================
+          if (
+            imported === 0
+          ) {
 
-            await setDoc(
-
-              doc(
-                db,
-                'app_data',
-                'current_schedule'
-              ),
-
-              {
-
-                schedules:
-                  convertSetsToArrays(
-                    schedules
-                  ),
-
-                professorHours:
-                  profHoursCounter,
-
-                updatedAt:
-                  new Date()
-                    .toISOString(),
-
-                sourceFile:
-                  file.name,
-
-                importedLines:
-                  importedLines,
-
-                ignoredLines:
-                  ignoredLines
-
-              }
-
-            );
-
-
-            alert(
-              'Fichier injecté avec succès !\n\n' +
-              importedLines +
-              ' ligne(s) importée(s).\n' +
-              ignoredLines +
-              ' ligne(s) ignorée(s).'
-            );
-
-
-          } catch (err) {
-
-            console.error(err);
-
-            setError(
-              err.message ||
-              'Le format du fichier texte n’est pas correct.'
+            throw new Error(
+              'Aucune ligne valide trouvée dans le fichier.'
             );
 
           }
 
-        };
+
+          await setDoc(
+
+            doc(
+              db,
+              'app_data',
+              'current_schedule'
+            ),
+
+            {
+
+              schedules:
+                convertSetsToArrays(
+                  schedules
+                ),
+
+              professorHours:
+                hours,
+
+              updatedAt:
+                new Date()
+                  .toISOString(),
+
+              sourceFile:
+                file.name,
+
+              importedLines:
+                imported,
+
+              ignoredLines:
+                ignored
+
+            }
+
+          );
 
 
-      reader.readAsText(
-        file,
-        'UTF-8'
+          alert(
+            'Fichier injecté avec succès !\n\n' +
+            imported +
+            ' ligne(s) importée(s).\n' +
+            ignored +
+            ' ligne(s) ignorée(s).'
+          );
+
+
+        } catch (err) {
+
+          console.error(err);
+
+          setError(
+            'Erreur lors de l import : ' +
+            err.message
+          );
+
+        }
+
+      };
+
+
+    reader.readAsText(
+      file,
+      'UTF-8'
+    );
+
+  }
+
+
+  // ==========================================================
+  // ADMIN
+  // ==========================================================
+
+  function handleSecretClick() {
+
+    const password =
+      window.prompt(
+        'Entrez le mot de passe administrateur :'
       );
 
-    };
 
+    if (
+      password ===
+      'MonMotDePasseSecret123'
+    ) {
 
-  // ==========================================================
-  // ACCES ADMINISTRATEUR
-  // ==========================================================
+      setShowAdminPanel(
+        true
+      );
 
-  const handleSecretClick =
-    () => {
+    } else if (
+      password !== null
+    ) {
 
-      const password =
-        prompt(
-          'Entrez le mot de passe administrateur :'
-        );
+      window.alert(
+        'Mot de passe incorrect.'
+      );
 
+    }
 
-      if (
-        password ===
-        'MonMotDePasseSecret123'
-      ) {
-
-        setShowAdminPanel(
-          true
-        );
-
-      } else if (
-        password !== null
-      ) {
-
-        alert(
-          'Mot de passe incorrect.'
-        );
-
-      }
-
-    };
+  }
 
 
   // ==========================================================
@@ -1521,16 +1404,32 @@ function App() {
 
       <div
         className="
+          min-h-screen
           flex
           items-center
           justify-center
-          h-screen
+          bg-gray-50
         "
       >
 
-        <p>
-          Chargement des horaires...
-        </p>
+        <div
+          className="
+            bg-white
+            p-8
+            rounded-lg
+            shadow
+          "
+        >
+
+          <p
+            className="
+              text-gray-700
+            "
+          >
+            Chargement des horaires...
+          </p>
+
+        </div>
 
       </div>
 
@@ -1540,7 +1439,7 @@ function App() {
 
 
   // ==========================================================
-  // INTERFACE PRINCIPALE
+  // INTERFACE
   // ==========================================================
 
   return (
@@ -1553,20 +1452,11 @@ function App() {
       "
     >
 
-      {/* ======================================================
-          HEADER
-          ====================================================== */}
-
       <header
         className="
           max-w-6xl
           mx-auto
           mb-8
-          flex
-          flex-col
-          md:flex-row
-          justify-between
-          items-center
           bg-white
           p-6
           rounded-lg
@@ -1574,131 +1464,135 @@ function App() {
         "
       >
 
-        <div>
+        <div
+          className="
+            flex
+            flex-col
+            md:flex-row
+            justify-between
+            items-center
+          "
+        >
 
-          <h1
-            onDoubleClick={
-              handleSecretClick
-            }
-            className="
-              text-3xl
-              font-bold
-              text-gray-900
-              cursor-default
-              select-none
-            "
-          >
-            Horaires des Professeurs
-          </h1>
+          <div>
 
-
-          <p
-            className="
-              text-sm
-              text-gray-500
-              mt-1
-            "
-          >
-            Application synchronisée
-          </p>
-
-        </div>
-
-
-        {/* ==================================================
-            PANNEAU ADMINISTRATEUR
-            ================================================== */}
-
-        {showAdminPanel && (
-
-          <div
-            className="
-              mt-4
-              md:mt-0
-              p-4
-              border
-              border-blue-200
-              bg-blue-50
-              rounded-lg
-              max-w-sm
-            "
-          >
-
-            <div
-              className="
-                flex
-                justify-between
-                items-center
-                mb-2
-              "
-            >
-
-              <h3
-                className="
-                  text-sm
-                  font-semibold
-                  text-blue-900
-                "
-              >
-                Import du fichier .txt
-              </h3>
-
-
-              <button
-                onClick={() =>
-                  setShowAdminPanel(
-                    false
-                  )
-                }
-                className="
-                  text-gray-400
-                  hover:text-gray-600
-                  text-xs
-                  ml-4
-                "
-              >
-                Fermer X
-              </button>
-
-            </div>
-
-
-            <input
-              type="file"
-              accept=".txt"
-              onChange={
-                handleFileUpload
+            <h1
+              onDoubleClick={
+                handleSecretClick
               }
               className="
-                block
-                w-full
-                text-xs
-                cursor-pointer
+                text-3xl
+                font-bold
+                text-gray-900
+                select-none
               "
-            />
+            >
+              Horaires des Professeurs
+            </h1>
 
 
             <p
               className="
-                text-xs
-                text-gray-600
+                text-sm
+                text-gray-500
                 mt-1
-                truncate
               "
             >
-              Fichier : {fileName}
+              Application synchronisée
             </p>
 
           </div>
 
-        )}
+
+          {showAdminPanel && (
+
+            <div
+              className="
+                mt-4
+                md:mt-0
+                p-4
+                border
+                border-blue-200
+                bg-blue-50
+                rounded-lg
+                w-full
+                md:w-auto
+              "
+            >
+
+              <div
+                className="
+                  flex
+                  justify-between
+                  items-center
+                  mb-2
+                "
+              >
+
+                <h3
+                  className="
+                    text-sm
+                    font-semibold
+                    text-blue-900
+                  "
+                >
+                  Import du fichier TXT
+                </h3>
+
+
+                <button
+                  type="button"
+                  onClick={
+                    function() {
+                      setShowAdminPanel(
+                        false
+                      );
+                    }
+                  }
+                  className="
+                    text-gray-500
+                    hover:text-gray-800
+                    text-xs
+                  "
+                >
+                  Fermer
+                </button>
+
+              </div>
+
+
+              <input
+                type="file"
+                accept=".txt"
+                onChange={
+                  handleFileUpload
+                }
+                className="
+                  block
+                  w-full
+                  text-xs
+                "
+              />
+
+
+              <p
+                className="
+                  text-xs
+                  text-gray-600
+                  mt-2
+                "
+              >
+                Fichier : {fileName}
+              </p>
+
+            </div>
+
+          )}
+
+        </div>
 
       </header>
 
-
-      {/* ======================================================
-          ERREUR
-          ====================================================== */}
 
       {error && (
 
@@ -1706,23 +1600,26 @@ function App() {
           className="
             max-w-6xl
             mx-auto
-            bg-red-100
-            text-red-700
-            px-4
-            py-3
-            rounded
             mb-4
+            bg-red-100
+            border
+            border-red-300
+            text-red-700
+            p-4
+            rounded-lg
           "
         >
+
+          <strong>
+            Erreur :
+          </strong>{' '}
+
           {error}
+
         </div>
 
       )}
 
-
-      {/* ======================================================
-          CONTENU
-          ====================================================== */}
 
       <main
         className="
@@ -1748,52 +1645,79 @@ function App() {
           "
         >
 
-          {[
-            'professors',
-            'classes',
-            'rooms'
-          ].map(
-            (tab) => (
-
-              <button
-                key={tab}
-                onClick={() =>
-                  setActiveTab(
-                    tab
-                  )
-                }
-                className={
-                  'py-2 px-4 font-medium text-sm border-b-2 ' +
-                  (
-                    activeTab === tab
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500'
-                  )
-                }
-              >
-
-                {tab ===
+          <button
+            type="button"
+            onClick={
+              function() {
+                setActiveTab(
                   'professors'
+                );
+              }
+            }
+            className={
+              'py-2 px-4 font-medium text-sm border-b-2 ' +
+              (
+                activeTab ===
+                'professors'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500'
+              )
+            }
+          >
+            Professeurs
+          </button>
 
-                  ? 'Professeurs'
 
-                  : tab ===
-                    'classes'
+          <button
+            type="button"
+            onClick={
+              function() {
+                setActiveTab(
+                  'classes'
+                );
+              }
+            }
+            className={
+              'py-2 px-4 font-medium text-sm border-b-2 ' +
+              (
+                activeTab ===
+                'classes'
+                  ? 'border-green-600 text-green-600'
+                  : 'border-transparent text-gray-500'
+              )
+            }
+          >
+            Classes
+          </button>
 
-                  ? 'Classes'
 
-                  : 'Locaux'}
-
-              </button>
-
-            )
-          )}
+          <button
+            type="button"
+            onClick={
+              function() {
+                setActiveTab(
+                  'rooms'
+                );
+              }
+            }
+            className={
+              'py-2 px-4 font-medium text-sm border-b-2 ' +
+              (
+                activeTab ===
+                'rooms'
+                  ? 'border-purple-600 text-purple-600'
+                  : 'border-transparent text-gray-500'
+              )
+            }
+          >
+            Locaux
+          </button>
 
         </div>
 
 
         {/* ====================================================
-            LISTE DES ENTITES
+            LISTE
             ==================================================== */}
 
         <div
@@ -1812,90 +1736,90 @@ function App() {
               activeTab
             ] || {}
           )
-
             .sort(
-              (a, b) =>
-                a.localeCompare(
+              function(a, b) {
+
+                return a.localeCompare(
                   b,
                   undefined,
                   {
                     numeric: true,
                     sensitivity: 'base'
                   }
-                )
+                );
+
+              }
             )
-
             .map(
-              (entity) => (
+              function(entity) {
 
-                <button
-                  key={entity}
-                  onClick={() => {
+                return (
 
-                    setSelectedEntity(
-                      entity
-                    );
+                  <button
+                    type="button"
+                    key={entity}
+                    onClick={
+                      function() {
 
-                    setIsModalOpen(
-                      true
-                    );
+                        setSelectedEntity(
+                          entity
+                        );
 
-                  }}
-                  className="
-                    p-3
-                    text-center
-                    bg-gray-50
-                    hover:bg-blue-50
-                    border
-                    border-gray-200
-                    rounded-lg
-                    font-medium
-                    text-gray-700
-                    transition
-                  "
-                >
+                        setIsModalOpen(
+                          true
+                        );
 
-                  {entity}
+                      }
+                    }
+                    className="
+                      p-3
+                      text-center
+                      bg-gray-50
+                      hover:bg-blue-50
+                      border
+                      border-gray-200
+                      rounded-lg
+                      font-medium
+                      text-gray-700
+                    "
+                  >
+
+                    {entity}
 
 
-                  {activeTab ===
-                    'professors' &&
+                    {activeTab ===
+                      'professors' &&
+                      professorHours[
+                        entity
+                      ] !== undefined && (
 
-                    professorHours[
-                      entity
-                    ] !== undefined && (
+                        <span
+                          className="
+                            block
+                            text-xs
+                            font-normal
+                            text-gray-400
+                            mt-1
+                          "
+                        >
+                          {
+                            professorHours[
+                              entity
+                            ]
+                          } h
+                        </span>
 
-                      <span
-                        className="
-                          block
-                          text-xs
-                          font-normal
-                          text-gray-400
-                          mt-0.5
-                        "
-                      >
+                      )}
 
-                        {
-                          professorHours[
-                            entity
-                          ]
-                        } h
+                  </button>
 
-                      </span>
+                );
 
-                    )}
-
-                </button>
-
-              )
+              }
             )}
 
         </div>
 
-
-        {/* ====================================================
-            AUCUNE DONNEE
-            ==================================================== */}
 
         {Object.keys(
           allSchedules[
@@ -1906,8 +1830,8 @@ function App() {
           <p
             className="
               text-gray-500
-              mt-6
               text-center
+              py-8
             "
           >
             Aucun horaire disponible.
@@ -1952,17 +1876,19 @@ function App() {
                 : []
             }
 
-            onClose={() => {
+            onClose={
+              function() {
 
-              setIsModalOpen(
-                false
-              );
+                setIsModalOpen(
+                  false
+                );
 
-              setSelectedEntity(
-                null
-              );
+                setSelectedEntity(
+                  null
+                );
 
-            }}
+              }
+            }
 
           />
 
@@ -1971,7 +1897,6 @@ function App() {
     </div>
 
   );
-
 }
 
 

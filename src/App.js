@@ -286,7 +286,7 @@ function App() {
           ))}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {Object.keys(allSchedules[activeTab] || {}).sort().map((entity) => (
              { setSelectedEntity(entity); setIsModalOpen(true); }}
               className="p-3 text-center bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded-lg font-medium text-gray-700 transition"

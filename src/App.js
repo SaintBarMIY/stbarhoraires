@@ -181,659 +181,189 @@ function App() {
   const [uploaderId, setUploaderId] = useState(null); // ID de l'utilisateur qui a uploadé le fichier (pour info, pas pour permission)
   const [authorizedUploaderIds, setAuthorizedUploaderIds] = useState([]); // Nouvelle liste des UIDs autorisés
 
-  // Initialisation de Firebase et authentification
+    // Initialisation de Firebase et authentification simplifiée
   useEffect(() => {
     try {
-      // Utilisation de process.env.REACT_APP_FIREBASE_CONFIG
       const firebaseConfig = JSON.parse(typeof process.env.REACT_APP_FIREBASE_CONFIG !== 'undefined' ? process.env.REACT_APP_FIREBASE_CONFIG : '{}');
 
       if (Object.keys(firebaseConfig).length === 0) {
-        console.error("Firebase config is empty. Cannot initialize Firebase.");
-        setError("Configuration Firebase manquante. L'application ne peut pas se connecter à la base de données.");
+        console.error("Configuration Firebase manquante.");
+        setError("Erreur de configuration de la base de données.");
         setLoading(false);
         return;
       }
 
       const app = initializeApp(firebaseConfig);
-      const firestoreDb = getFirestore(app);
-      const firebaseAuth = getAuth(app);
+      const authInstance = getAuth(app);
+      const firestoreInstance = getFirestore(app);
+      setDb(firestoreInstance);
 
-      setDb(firestoreDb);
-
-      const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
-        if (user) {
-          setUserId(user.uid);
-        } else {
-          try {
-            // Dans l'environnement Netlify, __initial_auth_token sera undefined,
-            // donc nous nous rabattrons sur la connexion anonyme.
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-              await signInWithCustomToken(firebaseAuth, __initial_auth_token);
-            } else {
-              await signInAnonymously(firebaseAuth);
-            }
-          } catch (anonError) {
-            console.error("Erreur lors de la connexion anonyme ou avec jeton:", anonError);
-            setError("Erreur d'authentification. L'application pourrait ne pas fonctionner correctement. Vérifiez les méthodes de connexion Firebase.");
-          }
-        }
+      // Connexion automatique anonyme pour tout le monde (Profs et Admins)
+      onAuthStateChanged(authInstance, (user) => {
+        if (user) setUserId(user.uid);
         setIsAuthReady(true);
       });
 
-      return () => unsubscribe();
+      signInAnonymously(authInstance).catch(err => console.error(err));
+
     } catch (err) {
-      console.error("Erreur lors de l'initialisation de Firebase:", err);
-      setError("Erreur lors de l'initialisation de Firebase. Vérifiez votre configuration.");
+      console.error(err);
+      setError("Erreur d'initialisation.");
       setLoading(false);
     }
-  }, [appId]); // Ajout de appId comme dépendance pour s'assurer qu'elle est bien définie
+  }, []);
 
-  // Chargement des données des horaires depuis Firestore
+  // Écouter en temps réel les horaires enregistrés
   useEffect(() => {
     if (!db || !isAuthReady) return;
 
-    // Utilisation de appId déjà déclarée
-    const scheduleDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'schedules', 'main-schedule');
-
-    const unsubscribe = onSnapshot(scheduleDocRef, (docSnap) => {
+    setLoading(true);
+    const scheduleRef = doc(db, "app_data", "current_schedule");
+    
+    const unsubscribe = onSnapshot(scheduleRef, (docSnap) => {
       if (docSnap.exists()) {
-        const data = docSnap.data();
-        setProfessorHours(data.professorHours || {});
-        setAllSchedules(data.allSchedules || { professors: {}, classes: {}, rooms: {} });
-        setUploaderId(data.uploaderId || null); // Conserve l'ID du dernier uploader pour information
-        setLoading(false);
-      } else {
-        console.log("Aucun emploi du temps trouvé dans Firestore. Le premier upload le créera.");
-        setLoading(false);
-        setProfessorHours({});
-        setAllSchedules({ professors: {}, classes: {}, rooms: {} });
-        setUploaderId(null);
+        const fileData = docSnap.data();
+        if (fileData.schedules) setAllSchedules(fileData.schedules);
+        if (fileData.professorHours) setProfessorHours(fileData.professorHours);
       }
-    }, (dbError) => {
-      console.error("Erreur lors du chargement des données d'horaires depuis Firestore:", dbError);
-      setError("Impossible de charger les données d'horaires. Veuillez réessayer.");
+      setLoading(false);
+    }, (err) => {
+      console.error(err);
+      setError("Impossible de charger les plannings.");
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [db, isAuthReady, appId]); // Ajout de appId comme dépendance
+  }, [db, isAuthReady]);
 
-  // Chargement de la liste des UIDs autorisés depuis Firestore
-  useEffect(() => {
-    if (!db || !isAuthReady) return;
-
-    // Utilisation de appId déjà déclarée
-    const authorizedUploaderDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'authorized_uploaders', 'list');
-
-    const unsubscribe = onSnapshot(authorizedUploaderDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setAuthorizedUploaderIds(data.uids || []);
-      } else {
-        console.log("Document 'authorized_uploaders/list' non trouvé. Il doit être créé manuellement.");
-        setAuthorizedUploaderIds([]);
-      }
-    }, (dbError) => {
-      console.error("Erreur lors du chargement des UIDs autorisés:", dbError);
-      // Ne pas définir d'erreur critique ici pour ne pas bloquer l'app si la liste n'est pas trouvée
-    });
-
-    return () => unsubscribe();
-  }, [db, isAuthReady, appId]); // Ajout de appId comme dépendance
-
-  /**
-   * Sauvegarde les données traitées dans Firestore.
-   * @param {object} hoursData Les heures totales des professeurs.
-   * @param {object} schedulesData Les emplois du temps détaillés.
-   * @param {string} currentUserId L'ID de l'utilisateur actuel.
-   */
-  const saveScheduleToFirestore = async (hoursData, schedulesData, currentUserId) => {
-    if (!db || !currentUserId) {
-      setError("Base de données non prête ou utilisateur non identifié pour la sauvegarde.");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    // Utilisation de appId déjà déclarée
-    const scheduleDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'schedules', 'main-schedule');
-    const authorizedUploaderDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'authorized_uploaders', 'list');
-
-    try {
-      const schedulesDataForFirestore = convertSetsToArrays(schedulesData);
-
-      // Vérifier si le document 'main-schedule' existe déjà
-      const scheduleDocSnap = await getDoc(scheduleDocRef); // Utilisez getDoc ici pour vérifier l'existence
-      const isFirstUpload = !scheduleDocSnap.exists();
-
-      await setDoc(scheduleDocRef, {
-        professorHours: hoursData,
-        allSchedules: schedulesDataForFirestore,
-        uploaderId: currentUserId, // L'ID de la personne qui vient d'uploader
-        lastUpdatedBy: currentUserId,
-        lastUpdatedAt: new Date().toISOString()
-      });
-      console.log("Données sauvegardées avec succès dans Firestore !");
-
-      // Si c'est le tout premier upload, ajoutez l'UID de l'utilisateur actuel à la liste des uploaders autorisés
-      if (isFirstUpload) {
-        const authorizedUploaderDocSnap = await getDoc(authorizedUploaderDocRef);
-        let updatedAuthorizedUids = [];
-
-        if (authorizedUploaderDocSnap.exists()) {
-          // Si le document existe, ajoutez l'UID à la liste existante si pas déjà présent
-          const existingUids = authorizedUploaderDocSnap.data().uids || [];
-          if (!existingUids.includes(currentUserId)) {
-            updatedAuthorizedUids = [...existingUids, currentUserId];
-          } else {
-            // If it already exists, just use the existing ones
-            updatedAuthorizedUids = existingUids;
-          }
-        } else {
-          // Si le document n'existe pas, créez-le avec l'UID de l'utilisateur actuel
-          updatedAuthorizedUids = [currentUserId];
-        }
-        await setDoc(authorizedUploaderDocRef, { uids: updatedAuthorizedUids });
-        setAuthorizedUploaderIds(updatedAuthorizedUids); // Mettre à jour l'état local
-        console.log("UID de l'uploader ajouté à la liste des autorisés.");
-      }
-
-      setUploaderId(currentUserId); // Met à jour l'ID de l'uploader localement
-    } catch (saveError) {
-      console.error("Erreur lors de la sauvegarde dans Firestore:", saveError);
-      setError("Erreur lors de la sauvegarde des données. Veuillez réessayer.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  /**
-   * Traite le contenu du fichier pour extraire les heures de cours et l'emploi du temps détaillé.
-   * Appelle saveScheduleToFirestore après traitement.
-   * @param {string} content Le contenu textuel du fichier.
-   */
-  const processFileContent = async (content) => {
-    setLoading(true);
-    setError(null);
-    const uniqueProfessorSlots = {};
-    const professorRawEntries = {};
-    const classRawEntries = {};
-    const roomRawEntries = {};
-
-    try {
-      const lines = content.split('\n');
-      lines.forEach(line => {
-        if (line.trim() === '') {
-          return;
-        }
-
-        const parts = line.split(',');
-
-        if (parts.length < 7) {
-          const defaultEntry = {
-            courseNumber: 'N/A', class: 'N/A', professorName: UNKNOWN_PROFESSOR_KEY,
-            course: 'N/A', room: 'N/A', day: '0', hour: '0'
-          };
-          if (!professorRawEntries[UNKNOWN_PROFESSOR_KEY]) professorRawEntries[UNKNOWN_PROFESSOR_KEY] = [];
-          professorRawEntries[UNKNOWN_PROFESSOR_KEY].push(defaultEntry);
-          if (!uniqueProfessorSlots[UNKNOWN_PROFESSOR_KEY]) uniqueProfessorSlots[UNKNOWN_PROFESSOR_KEY] = new Set();
-          uniqueProfessorSlots[UNKNOWN_PROFESSOR_KEY].add(`N/A-0-0-${Date.now()}-${Math.random()}`);
-          console.warn(`Ligne mal formée ou incomplète (moins de 7 champs) : "${line}". Attribuée à INCONNU.`);
-          return;
-        }
-
-        const courseNumber = (parts[0] || '').replace(/"/g, '').trim() || 'N/A';
-        const className = (parts[1] || '').replace(/"/g, '').trim() || 'N/A';
-        let professorName = (parts[2] || '').replace(/"/g, '').trim();
-        const courseName = (parts[3] || '').replace(/"/g, '').trim() || 'N/A';
-        const roomName = (parts[4] || '').replace(/"/g, '').trim() || 'N/A';
-        const day = (parts[5] || '').trim();
-        const hour = (parts[6] || '').trim();
-
-        if (!professorName || professorName.length !== 3 || !/^[A-Z]{3}$/.test(professorName)) {
-          console.warn(`Sigle de professeur invalide ou manquant : "${professorName}" dans la ligne "${line}". Attribué à INCONNU.`);
-          professorName = UNKNOWN_PROFESSOR_KEY;
-        }
-
-        const entry = {
-          courseNumber: courseNumber, class: className, professorName: professorName,
-          course: courseName, room: roomName, day: day, hour: hour
-        };
-
-        if (!professorRawEntries[professorName]) professorRawEntries[professorName] = [];
-        professorRawEntries[professorName].push(entry);
-
-        if (className !== 'N/A') {
-          if (!classRawEntries[className]) classRawEntries[className] = [];
-          classRawEntries[className].push(entry);
-        }
-
-        if (roomName !== 'N/A') {
-          if (!roomRawEntries[roomName]) roomRawEntries[roomName] = [];
-          roomRawEntries[roomName].push(entry);
-        }
-
-        if (!uniqueProfessorSlots[professorName]) {
-          uniqueProfessorSlots[professorName] = new Set();
-        }
-        uniqueProfessorSlots[professorName].add(`${courseNumber}-${day}-${hour}`);
-      });
-
-      const finalAllSchedules = { professors: {}, classes: {}, rooms: {} };
-
-      for (const prof in professorRawEntries) {
-        const groupedSlots = {};
-        professorRawEntries[prof].forEach(entry => {
-          const slotKey = `${entry.courseNumber}-${entry.day}-${entry.hour}`;
-          if (!groupedSlots[slotKey]) {
-            groupedSlots[slotKey] = {
-              courseNumber: entry.courseNumber, day: entry.day, hour: entry.hour,
-              course: entry.course, room: entry.room, classes: new Set(), professorName: entry.professorName
-            };
-          }
-          groupedSlots[slotKey].classes.add(entry.class);
-        });
-        finalAllSchedules.professors[prof] = Object.values(groupedSlots).map(groupedEntry => ({
-          courseNumber: groupedEntry.courseNumber, day: groupedEntry.day, hour: groupedEntry.hour,
-          course: groupedEntry.course, room: groupedEntry.room,
-          class: Array.from(groupedEntry.classes).sort().join(', '), // Pour l'affichage
-          professorName: groupedEntry.professorName
-        }));
-      }
-
-      for (const cls in classRawEntries) {
-        const groupedSlots = {};
-        classRawEntries[cls].forEach(entry => {
-          const slotKey = `${entry.day}-${entry.hour}`;
-          if (!groupedSlots[slotKey]) {
-            groupedSlots[slotKey] = {
-              day: entry.day, hour: entry.hour, class: entry.class,
-              professorNames: new Set(), courses: new Set(), rooms: new Set()
-            };
-          }
-          groupedSlots[slotKey].professorNames.add(entry.professorName);
-          groupedSlots[slotKey].courses.add(entry.course);
-          groupedSlots[slotKey].rooms.add(entry.room);
-        });
-        finalAllSchedules.classes[cls] = Object.values(groupedSlots).map(groupedEntry => ({
-          day: groupedEntry.day, hour: groupedEntry.hour, class: groupedEntry.class,
-          professorName: Array.from(groupedEntry.professorNames).sort().join(', '),
-          course: Array.from(groupedEntry.courses).sort().join(', '),
-          room: Array.from(groupedEntry.rooms).sort().join(', ')
-        }));
-      }
-
-      for (const room in roomRawEntries) {
-        const groupedSlots = {};
-        roomRawEntries[room].forEach(entry => {
-          const slotKey = `${entry.day}-${entry.hour}`;
-          if (!groupedSlots[slotKey]) {
-            groupedSlots[slotKey] = {
-              day: entry.day, hour: entry.hour, room: entry.room,
-              classes: new Set(), professorNames: new Set(), courses: new Set()
-            };
-          }
-          groupedSlots[slotKey].classes.add(entry.class);
-          groupedSlots[slotKey].professorNames.add(entry.professorName);
-          groupedSlots[slotKey].courses.add(entry.course);
-        });
-        finalAllSchedules.rooms[room] = Object.values(groupedSlots).map(groupedEntry => ({
-          day: groupedEntry.day, hour: groupedEntry.hour, room: groupedEntry.room,
-          class: Array.from(groupedEntry.classes).sort().join(', '),
-          professorName: Array.from(groupedEntry.professorNames).sort().join(', '),
-          course: Array.from(groupedEntry.courses).sort().join(', ')
-        }));
-      }
-
-      const finalProfessorHoursMap = {};
-      for (const prof in uniqueProfessorSlots) {
-        finalProfessorHoursMap[prof] = uniqueProfessorSlots[prof].size;
-      }
-
-      setProfessorHours(finalProfessorHoursMap);
-      setAllSchedules(finalAllSchedules);
-
-      // Sauvegarder dans Firestore après un traitement réussi
-      if (userId) { // S'assurer que l'utilisateur est authentifié pour sauvegarder
-        await saveScheduleToFirestore(finalProfessorHoursMap, finalAllSchedules, userId);
-      } else {
-        setError("Impossible de sauvegarder : utilisateur non authentifié.");
-        setLoading(false);
-      }
-
-    } catch (err) {
-      console.error("Erreur lors du traitement du fichier:", err);
-      setError("Erreur lors du traitement du fichier. Veuillez vérifier le format.");
-      setLoading(false);
-    }
-  };
-
-  /**
-   * Gère le changement de fichier via l'input de type 'file'.
-   * Lit le contenu du fichier et le passe à processFileContent.
-   * @param {Event} event L'événement de changement de fichier.
-   */
-  const handleFileChange = (event) => {
+  // Fonction de lecture et découpage du fichier texte
+  const handleFileUpload = (event) => {
     const file = event.target.files[0];
-    if (file) {
-      setFileName(file.name);
-      setLoading(true);
-      setError(null);
-      const reader = new FileReader();
-      reader.onload = async (e) => { // Rendre async pour await processFileContent
-        try {
-          await processFileContent(e.target.result);
-        } catch (err) {
-          console.error("Erreur lors de la lecture ou du traitement du fichier:", err);
-          setError("Erreur lors de la lecture ou du traitement du fichier. Veuillez vous assurer que c'est un fichier texte valide.");
-          setLoading(false);
-        }
-      };
-      reader.onerror = () => {
-        setError("Impossible de lire le fichier.");
-        setLoading(false);
-      };
-      reader.readAsText(file);
-    } else {
-      setFileName("Aucun fichier sélectionné");
-    }
-  };
+    if (!file || !db) return;
 
-  /**
-   * Gère le téléchargement du fichier depuis une URL.
-   *
-   */
-  const handleFetchFileFromUrl = async () => {
-    if (!fileUrl) {
-      setError("Veuillez saisir une URL de fichier.");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    console.log("Tentative de chargement depuis l'URL:", fileUrl); // Log the URL being fetched
-    try {
-      const response = await fetch(fileUrl);
-      if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status} - ${response.statusText}`);
+    setFileName(file.name);
+    const reader = new FileReader();
+
+    reader.onload = async (e) => {
+      try {
+        setError(null);
+        const textContent = e.target.result;
+        const schedules = { professors: {}, classes: {}, rooms: {} };
+        const profHoursCounter = {};
+
+        // Découpage ligne par ligne
+        const lines = textContent.split(/\r?\n/);
+
+        lines.forEach((line) => {
+          if (!line.trim()) return;
+          const columns = line.split(/\t|,|;/); 
+          
+          if (columns.length >= 5) {
+            const day = columns[0]?.trim();
+            const hour = columns[1]?.trim();
+            const className = columns[2]?.trim();
+            const profSigle = columns[3]?.trim() || UNKNOWN_PROFESSOR_KEY;
+            const course = columns[4]?.trim();
+            const room = columns[5]?.trim() || "N/A";
+
+            const entry = { day, hour, class: className, professorName: profSigle, course, room };
+
+            if (!schedules.professors[profSigle]) schedules.professors[profSigle] = [];
+            schedules.professors[profSigle].push(entry);
+
+            if (!schedules.classes[className]) schedules.classes[className] = [];
+            schedules.classes[className].push(entry);
+
+            if (!schedules.rooms[room]) schedules.rooms[room] = [];
+            schedules.rooms[room].push(entry);
+
+            profHoursCounter[profSigle] = (profHoursCounter[profSigle] || 0) + 1;
+          }
+        });
+
+        await setDoc(doc(db, "app_data", "current_schedule"), {
+          schedules: convertSetsToArrays(schedules),
+          professorHours: profHoursCounter,
+          updatedAt: new Date().toISOString()
+        });
+
+        alert("Fichier injecté avec succès ! 🎉");
+      } catch (err) {
+        setError("Le format du fichier texte n'est pas correct.");
       }
-      const textContent = await response.text();
-      await processFileContent(textContent);
-      setFileName(`Fichier chargé depuis URL: ${fileUrl}`); // Mettre à jour le nom du fichier pour l'affichage
-    } catch (err) {
-      console.error("Erreur lors du chargement du fichier depuis l'URL:", err);
-      setError(`Impossible de charger le fichier depuis l'URL : ${err.message}. Veuillez vérifier l'URL et les permissions CORS.`);
-      setLoading(false);
+    };
+    reader.readAsText(file);
+  };
+
+  // Logique du volet secret
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const handleSecretClick = () => {
+    const password = prompt("Entrez le mot de passe administrateur pour ouvrir le volet :");
+    // 🔑 Modifiez "MonMotDePasseSecret123" par le mot de passe de votre choix
+    if (password === "MonMotDePasseSecret123") {
+      setShowAdminPanel(true);
+    } else if (password !== null) {
+      alert("Mot de passe incorrect.");
     }
   };
 
-
-  // Fonction pour ouvrir la modale avec l'emploi du temps de l'entité sélectionnée
-  const openScheduleModal = (name, type) => {
-    setSelectedEntity({ name, type });
-    setIsModalOpen(true);
-  };
-
-  // Fonction pour fermer la modale
-  const closeScheduleModal = () => {
-    setIsModalOpen(false);
-    setSelectedEntity(null);
-  };
-
-  // Préparer les données pour l'affichage dans les tableaux
-  const getSortedData = (type) => {
-    let dataArray = [];
-    let hoursMap = {};
-
-    if (type === 'professors') {
-      hoursMap = professorHours;
-      dataArray = Object.entries(hoursMap).map(([name, hours]) => ({ name, hours }));
-      // Trier 'INCONNU' en dernier, le reste par ordre alphabétique
-      dataArray.sort((a, b) => {
-        if (a.name === UNKNOWN_PROFESSOR_KEY) return 1;
-        if (b.name === UNKNOWN_PROFESSOR_KEY) return -1;
-        return a.name.localeCompare(b.name); // Tri alphabétique par nom
-      });
-    } else if (type === 'classes') {
-      hoursMap = {};
-      // Le total des heures pour les classes est le nombre d'entrées regroupées
-      for (const className in allSchedules.classes) {
-        hoursMap[className] = allSchedules.classes[className].length;
-      }
-      dataArray = Object.entries(hoursMap).map(([name, hours]) => ({ name, hours }));
-      dataArray.sort((a, b) => a.name.localeCompare(b.name)); // Tri alphabétique par nom
-    } else if (type === 'rooms') {
-      hoursMap = {};
-      // Le total des heures pour les locaux est le nombre d'entrées regroupées
-      for (const roomName in allSchedules.rooms) {
-        hoursMap[roomName] = allSchedules.rooms[roomName].length;
-      }
-      dataArray = Object.entries(hoursMap).map(([name, hours]) => ({ name, hours }));
-      dataArray.sort((a, b) => a.name.localeCompare(b.name)); // Tri alphabétique par nom
-    }
-    return dataArray;
-  };
-
-  const currentData = getSortedData(activeTab);
-
-  // Déterminer si l'utilisateur actuel est un uploader autorisé
-  const isCurrentUserAuthorizedUploader = userId && authorizedUploaderIds.includes(userId);
-  // Permettre le premier upload si aucun horaire n'a été uploadé ET aucune liste d'uploaders n'existe
-  // OU si l'utilisateur actuel est dans la liste des uploaders autorisés.
-  const canUpload = userId && (
-    (Object.keys(professorHours).length === 0 && authorizedUploaderIds.length === 0) || // Permet le tout premier upload
-    isCurrentUserAuthorizedUploader
-  );
-
+  if (loading) return <div className="flex items-center justify-center h-screen"><p>Chargement...</p></div>;
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4 font-sans">
-      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6 text-center">
-          Gestion des Horaires
-        </h1>
-
-        {/* Section de téléchargement de fichier (conditionnelle) */}
-        {canUpload ? (
-          <div className="mb-6 p-4 border border-blue-200 bg-blue-50 rounded-lg flex flex-col items-center">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Mettre à jour les horaires</h2>
-
-            {/* Téléchargement manuel de fichier */}
-            <div className="w-full mb-4">
-              <label htmlFor="file-upload" className="cursor-pointer bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out shadow-md">
-                Choisir un fichier Untis (.TXT)
-              </label>
-              <input
-                id="file-upload"
-                type="file"
-                accept=".txt"
-                onChange={handleFileChange}
-                className="hidden"
-                disabled={loading}
-              />
-              <span className="mt-3 text-gray-700 text-sm block text-center">{fileName}</span>
-            </div>
-
-            {/* Séparateur */}
-            <div className="w-full border-b border-gray-300 my-4 text-center">
-              <span className="bg-white px-2 text-gray-500 text-sm">OU</span>
-            </div>
-
-            {/* Mise à jour via URL */}
-            <div className="w-full">
-              <label htmlFor="file-url" className="block text-gray-700 text-sm font-bold mb-2">
-                URL du fichier texte :
-              </label>
-              <input
-                type="url"
-                id="file-url"
-                value={fileUrl}
-                onChange={(e) => setFileUrl(e.target.value)}
-                placeholder="Ex: https://example.com/horaires.txt"
-                className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-3"
-                disabled={loading}
-              />
-              <button
-                onClick={handleFetchFileFromUrl}
-                className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out shadow-md w-full"
-                disabled={loading}
-              >
-                Charger depuis l'URL
-              </button>
-            </div>
-
-            {loading && <p className="text-blue-600 mt-4">Traitement en cours...</p>}
-            {error && <p className="text-red-600 mt-4 text-sm">{error}</p>}
-          </div>
-        ) : (
-          <div className="mb-6 p-4 border border-gray-200 bg-gray-50 rounded-lg text-center text-gray-700">
-            <p className="font-semibold">Mode consultation uniquement.</p>
-            <p className="text-sm">Seuls les utilisateurs autorisés peuvent télécharger les fichiers.</p>
-            {authorizedUploaderIds.length > 0 && (
-              <p className="text-xs text-gray-500 mt-1">
-                UIDs autorisés : {authorizedUploaderIds.join(', ')}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Onglets de navigation */}
-        <div className="flex justify-center mb-6 border-b border-gray-200">
-          <button
-            className={`py-2 px-4 text-lg font-medium ${
-              activeTab === 'professors'
-                ? 'border-b-2 border-blue-500 text-blue-600'
-                : 'text-gray-600 hover:text-blue-500'
-            } focus:outline-none transition duration-150 ease-in-out`}
-            onClick={() => setActiveTab('professors')}
-          >
-            Professeurs
-          </button>
-          <button
-            className={`ml-4 py-2 px-4 text-lg font-medium ${
-              activeTab === 'classes'
-                ? 'border-b-2 border-blue-500 text-blue-600'
-                : 'text-gray-600 hover:text-blue-500'
-            } focus:outline-none transition duration-150 ease-in-out`}
-            onClick={() => setActiveTab('classes')}
-          >
-            Classes
-          </button>
-          <button
-            className={`ml-4 py-2 px-4 text-lg font-medium ${
-              activeTab === 'rooms'
-                ? 'border-b-2 border-blue-500 text-blue-600'
-                : 'text-gray-600 hover:text-blue-500'
-            } focus:outline-none transition duration-150 ease-in-out`}
-            onClick={() => setActiveTab('rooms')}
-          >
-            Locaux
-          </button>
+    <div className="min-h-screen bg-gray-50 p-6">
+      <header className="max-w-6xl mx-auto mb-8 flex justify-between items-center bg-white p-6 rounded-lg shadow-sm">
+        <div>
+          {/* Un double-clic sur le titre déclenche l'ouverture secrète */}
+          <h1 onDoubleClick={handleSecretClick} className="text-3xl font-bold text-gray-900 cursor-default select-none">
+            Horaires des Professeurs
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">Application synchronisée</p>
         </div>
 
-        {loading && !error ? (
-          <p className="text-center text-blue-600">Chargement des données...</p>
-        ) : error ? (
-          <p className="text-center text-red-600">{error}</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full bg-white border border-gray-200 rounded-lg">
-              <thead className="bg-gray-200">
-                <tr>
-                  <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider rounded-tl-lg">
-                    {activeTab === 'professors' && 'Nom du Professeur'}
-                    {activeTab === 'classes' && 'Nom de la Classe'}
-                    {activeTab === 'rooms' && 'Nom du Local'}
-                  </th>
-                  <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider rounded-tr-lg">
-                    Total des Heures
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {currentData.length > 0 ? (
-                  currentData.map((item, index) => (
-                    <tr
-                      key={item.name}
-                      className={`cursor-pointer hover:bg-blue-100 transition duration-150 ease-in-out ${
-                        index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                      }`}
-                      onClick={() => openScheduleModal(item.name, activeTab)}
-                    >
-                      <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-800 font-medium">
-                        {item.name}
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-800">
-                        {item.hours}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="2" className="py-4 text-center text-gray-500">
-                      Aucune donnée trouvée pour cette catégorie.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        {/* Le volet d'importation s'affiche uniquement après le bon mot de passe */}
+        {showAdminPanel && (
+          <div className="p-4 border border-blue-200 bg-blue-50 rounded-lg max-w-sm">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-sm font-semibold text-blue-900">🛠️ Import du fichier .txt</h3>
+              <button onClick={() => setShowAdminPanel(false)} className="text-gray-400 hover:text-gray-600 text-xs">Fermer X</button>
+            </div>
+            <input type="file" accept=".txt" onChange={handleFileUpload} className="block w-full text-xs cursor-pointer" />
+            <p className="text-xs text-gray-600 mt-1 truncate">Fichier : {fileName}</p>
           </div>
         )}
+      </header>
 
-        <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-          <p className="font-semibold mb-2">Note sur le traitement du fichier :</p>
-          <ul className="list-disc list-inside space-y-1">
-            <li>
-              Cette application analyse chaque ligne du fichier comme un créneau de cours.
-            </li>
-            <li>
-              Pour les **professeurs**, le "Total des Heures" représente le nombre de créneaux horaires uniques (définis par le numéro de cours, le jour et l'heure). Si un professeur enseigne le même cours au même moment à plusieurs classes, ces classes sont **regroupées** sur une seule ligne dans l'emploi du temps détaillé du professeur.
-            </li>
-            <li>
-              Pour les **classes**, le "Total des Heures" représente le nombre de créneaux horaires uniques (définis par le jour et l'heure). Si plusieurs cours sont donnés simultanément pour une même classe, les informations de professeur, de cours et de local sont **regroupées** sur une seule ligne.
-            </li>
-            <li>
-              Pour les **locaux**, le "Total des Heures" représente le nombre de créneaux horaires uniques (définis par le jour et l'heure). Si un local est utilisé par plusieurs classes ou professeurs pour différents cours au même moment, ces informations sont **regroupées** sur une seule ligne.
-            </li>
-            <li>
-              Si le sigle du professeur est manquant ou ne respecte pas le format de 3 lettres majuscules, l'heure est attribuée à un professeur "INCONNU".
-            </li>
-            <li>
-              Les champs manquants (classe, cours, local, jour, heure) sont affichés comme "N/A" (Non Applicable) dans l'emploi du temps détaillé.
-            </li>
-            <li>
-              Toutes les listes sont triées par ordre alphabétique du nom de l'entité. Le professeur "INCONNU" est toujours affiché en dernier.
-            </li>
-          </ul>
-          <p className="mt-2">
-            Cliquez sur le nom d'une entité (professeur, classe ou local) dans le tableau pour afficher son emploi du temps détaillé.
-          </p>
-          <div className="mt-4 pt-2 border-t border-blue-300">
-            <p className="font-semibold">Informations utilisateur (pour le débogage) :</p>
-            <p>Votre ID utilisateur actuel : <span className="font-mono text-gray-700 break-all">{userId || "Non connecté"}</span></p>
-            <p>ID du dernier uploader : <span className="font-mono text-gray-700 break-all">{uploaderId || "Non défini"}</span></p>
-            <p>UIDs autorisés à uploader : <span className="font-mono text-gray-700 break-all">{authorizedUploaderIds.length > 0 ? authorizedUploaderIds.join(', ') : "Aucun défini (le premier upload définira le premier autorisé)"}</span></p>
-            {userId && isCurrentUserAuthorizedUploader && (
-              <p className="text-green-700 font-semibold">Vous êtes un uploader autorisé.</p>
-            )}
-            {userId && !isCurrentUserAuthorizedUploader && authorizedUploaderIds.length > 0 && (
-              <p className="text-red-700 font-semibold">Vous n'êtes pas un uploader autorisé.</p>
-            )}
-            {!userId && (
-              <p className="text-orange-700 font-semibold">En attente de connexion ou connexion anonyme.</p>
-            )}
-          </div>
+      {error && <div className="max-w-6xl mx-auto bg-red-100 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
+
+      <main className="max-w-6xl mx-auto bg-white rounded-lg shadow-sm p-6">
+        <div className="flex border-b border-gray-200 mb-6">
+          {['professors', 'classes', 'rooms'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`py-2 px-4 font-medium text-sm border-b-2 capitalize ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}
+            >
+              {tab === 'professors' ? 'Professeurs' : tab === 'classes' ? 'Classes' : 'Locaux'}
+            </button>
+          ))}
         </div>
-      </div>
 
-      {/* Modale de l'emploi du temps */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {Object.keys(allSchedules[activeTab] || {}).sort().map((entity) => (
+             { setSelectedEntity(entity); setIsModalOpen(true); }}
+              className="p-3 text-center bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded-lg font-medium text-gray-700 transition"
+            >
+              {entity}
+              {activeTab === 'professors' && professorHours[entity] && (
+                <span className="block text-xs font-normal text-gray-400 mt-0.5">{professorHours[entity]}h</span>
+              )}
+            </button>
+          ))}
+        </div>
+      </main>
+
       {isModalOpen && selectedEntity && (
-        <ScheduleModal
-          entityName={selectedEntity.name}
-          scheduleType={selectedEntity.type}
-          scheduleData={allSchedules[selectedEntity.type][selectedEntity.name] || []}
-          onClose={closeScheduleModal}
+         { setIsModalOpen(false); setSelectedEntity(null); }}
         />
       )}
     </div>

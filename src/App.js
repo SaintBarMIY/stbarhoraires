@@ -181,7 +181,7 @@ function App() {
   const [uploaderId, setUploaderId] = useState(null); // ID de l'utilisateur qui a uploadé le fichier (pour info, pas pour permission)
   const [authorizedUploaderIds, setAuthorizedUploaderIds] = useState([]); // Nouvelle liste des UIDs autorisés
 
-    // Initialisation de Firebase et authentification simplifiée
+      // Initialisation de Firebase et authentification simplifiée
   useEffect(() => {
     try {
       const firebaseConfig = JSON.parse(typeof process.env.REACT_APP_FIREBASE_CONFIG !== 'undefined' ? process.env.REACT_APP_FIREBASE_CONFIG : '{}');
@@ -238,7 +238,7 @@ function App() {
 
   // Fonction de lecture et découpage du fichier texte
   const handleFileUpload = (event) => {
-    const file = event.target.files[0];
+    const file = event.target.files;
     if (!file || !db) return;
 
     setFileName(file.name);
@@ -299,7 +299,7 @@ function App() {
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const handleSecretClick = () => {
     const password = prompt("Entrez le mot de passe administrateur pour ouvrir le volet :");
-    // 🔑 Modifiez "MonMotDePasseSecret123" par le mot de passe de votre choix
+    // 🔑 Vous pouvez modifier "MonMotDePasseSecret123" par le mot de passe de votre choix
     if (password === "MonMotDePasseSecret123") {
       setShowAdminPanel(true);
     } else if (password !== null) {

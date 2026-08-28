@@ -98,7 +98,6 @@ typeof obj === 'object' &&
 obj !== null
 ) {
 
-```
 const newObj = {};
 
 Object.keys(obj).forEach((key) => {
@@ -117,7 +116,6 @@ Object.keys(obj).forEach((key) => {
 });
 
 return newObj;
-```
 
 }
 
@@ -139,7 +137,6 @@ const scheduleGrid = {};
 
 DAYS_OF_WEEK.forEach((day) => {
 
-```
 scheduleGrid[day] = {};
 
 HOURS_OF_DAY.forEach((hour) => {
@@ -147,13 +144,11 @@ HOURS_OF_DAY.forEach((hour) => {
   scheduleGrid[day][hour] = null;
 
 });
-```
 
 });
 
 scheduleData.forEach((entry) => {
 
-```
 const day = String(entry.day);
 const hour = String(entry.hour);
 
@@ -242,7 +237,6 @@ if (
 
   scheduleGrid[day][hour] = cellContent;
 }
-```
 
 });
 
@@ -279,7 +273,6 @@ default:
     'Détails pour ' + entityName;
 
   break;
-```
 
 }
 
@@ -289,15 +282,12 @@ IMPRESSION
 
 const handlePrint = () => {
 
-```
 window.print();
-```
 
 };
 
 return (
 
-```
 <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center p-2 sm:p-4 z-50 print-container">
 
   <div className="bg-white rounded-lg shadow-xl p-3 sm:p-6 w-full max-w-6xl mx-auto print-area">
@@ -638,7 +628,6 @@ INITIALISATION FIREBASE
 
 useEffect(() => {
 
-```
 try {
 
   const configText =
@@ -752,7 +741,6 @@ try {
   setLoading(false);
 
 }
-```
 
 }, []);
 
@@ -762,7 +750,6 @@ try {
 
 useEffect(() => {
 
-```
 if (
   !db ||
   !isAuthReady
@@ -843,7 +830,6 @@ return () => {
   unsubscribe();
 
 };
-```
 
 }, [db, isAuthReady]);
 
@@ -854,7 +840,6 @@ CONNEXION ADMINISTRATEUR
 const handleAdminLogin =
 async (event) => {
 
-```
   event.preventDefault();
 
   setLoginError('');
@@ -955,7 +940,6 @@ async (event) => {
   }
 
 };
-```
 
 /* =======================================================
 DÉCONNEXION
@@ -964,7 +948,6 @@ DÉCONNEXION
 const handleAdminLogout =
 async () => {
 
-```
   try {
 
     const authInstance =
@@ -996,7 +979,6 @@ async () => {
   }
 
 };
-```
 
 /* =======================================================
 OUVERTURE ADMINISTRATION
@@ -1005,7 +987,6 @@ OUVERTURE ADMINISTRATION
 const handleSecretClick =
 () => {
 
-```
   if (adminUser) {
 
     setShowAdminPanel(true);
@@ -1023,7 +1004,6 @@ const handleSecretClick =
   setShowLogin(true);
 
 };
-```
 
 /* =======================================================
 IMPORT DU FICHIER GPU001.TXT
@@ -1032,7 +1012,6 @@ IMPORT DU FICHIER GPU001.TXT
 const handleFileUpload =
 (event) => {
 
-```
   const file =
     event.target.files &&
     event.target.files[0];
@@ -1391,7 +1370,6 @@ CHARGEMENT
 
 if (loading) {
 
-```
 return (
 
   <div className="flex items-center justify-center h-screen">
@@ -1403,7 +1381,6 @@ return (
   </div>
 
 );
-```
 
 }
 
@@ -1413,7 +1390,6 @@ INTERFACE PRINCIPALE
 
 return (
 
-```
 <div className="min-h-screen bg-gray-50 p-3 sm:p-6">
 
 
@@ -1765,7 +1741,6 @@ return (
     )}
 
 </div>
-```
 
 );
 }

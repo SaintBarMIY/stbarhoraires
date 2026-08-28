@@ -250,7 +250,6 @@ let modalTitle = '';
 
 switch (scheduleType) {
 
-```
 case 'professors':
 
   modalTitle =

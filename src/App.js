@@ -25,9 +25,9 @@ ADMINISTRATEURS AUTORISÉS
 ========================================================= */
 
 const ADMIN_EMAILS = [
-'[miy@belgacom.net](mailto:miy@belgacom.net)',
-'[hef@saintbar.be](mailto:hef@saintbar.be)',
-'[blv@saintbar.be](mailto:blv@saintbar.be)'
+'miy@belgacom.net',
+'hef@saintbar.be',
+'blv@saintbar.be'
 ];
 
 /* =========================================================

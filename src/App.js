@@ -141,7 +141,7 @@ scheduleGrid[day] = {};
 
 HOURS_OF_DAY.forEach((hour) => {
 
-  scheduleGrid[day][hour] = null;
+  scheduleGrid[day][hour] = [];
 
 });
 
@@ -149,47 +149,178 @@ HOURS_OF_DAY.forEach((hour) => {
 
 scheduleData.forEach((entry) => {
 
-const day = String(entry.day);
-const hour = String(entry.hour);
+  const day = String(entry.day);
+  const hour = String(entry.hour);
 
-if (
-  DAYS_OF_WEEK.includes(day) &&
-  HOURS_OF_DAY.includes(hour)
-) {
+  if (
+    DAYS_OF_WEEK.includes(day) &&
+    HOURS_OF_DAY.includes(hour)
+  ) {
 
-  let cellContent = null;
+    scheduleGrid[day][hour].push(entry);
 
+  }
+
+});
+
+
+/* =========================================================
+   REGROUPEMENT DES CLASSES
+   Exemple : 6A + 6B + 6C = 6ABC
+   ========================================================= */
+
+const groupClasses = (classes) => {
+
+  const groups = {};
+
+  classes.forEach((className) => {
+
+    const value = String(className || '').trim();
+
+    if (!value) {
+      return;
+    }
+
+    /*
+      On sépare le début numérique de la classe.
+
+      6A -> niveau 6 / lettre A
+      2BC -> niveau 2 / lettres BC
+    */
+
+    const match = value.match(/^(\d+)(.*)$/);
+
+    if (match) {
+
+      const level = match[1];
+      const letters = match[2];
+
+      if (!groups[level]) {
+        groups[level] = [];
+      }
+
+      groups[level].push(letters);
+
+    } else {
+
+      if (!groups[value]) {
+        groups[value] = [];
+      }
+
+      groups[value].push('');
+
+    }
+
+  });
+
+
+  return Object.keys(groups)
+    .sort()
+    .map((level) => {
+
+      const letters = groups[level]
+        .join('')
+        .split('')
+        .filter((value, index, array) =>
+          array.indexOf(value) === index
+        )
+        .sort()
+        .join('');
+
+      return level + letters;
+
+    })
+    .join(' / ');
+
+};
+
+
+/* =========================================================
+   AFFICHAGE D'UNE CASE
+   ========================================================= */
+
+const renderScheduleCell = (entries) => {
+
+  if (!entries || entries.length === 0) {
+    return null;
+  }
+
+
+  /*
+    PROFESSEURS :
+    on regroupe les classes lorsque cours + local sont identiques.
+  */
 
   if (scheduleType === 'professors') {
 
-    cellContent = (
+    const groups = {};
 
-      <div className="schedule-cell schedule-cell-blue">
+    entries.forEach((entry) => {
 
-        <div className="font-bold text-blue-800 text-sm sm:text-base">
-          {entry.course}
+      const key =
+        String(entry.course || '') +
+        '|' +
+        String(entry.room || '');
+
+      if (!groups[key]) {
+
+        groups[key] = {
+          course: entry.course,
+          room: entry.room,
+          classes: []
+        };
+
+      }
+
+      groups[key].classes.push(entry.class);
+
+    });
+
+
+    return Object.keys(groups).map((key) => {
+
+      const group = groups[key];
+
+      return (
+
+        <div
+          key={key}
+          className="schedule-cell schedule-cell-blue mb-1"
+        >
+
+          <div className="font-bold text-blue-800 text-sm sm:text-base">
+            {group.course}
+          </div>
+
+          <div className="text-gray-700 text-xs mt-1">
+            Classe : {groupClasses(group.classes)}
+          </div>
+
+          <div className="text-gray-700 text-xs">
+            Local : {group.room}
+          </div>
+
         </div>
 
-        <div className="text-gray-700 text-xs mt-1">
-          Classe : {entry.class}
-        </div>
+      );
 
-        <div className="text-gray-700 text-xs">
-          Local : {entry.room}
-        </div>
-
-      </div>
-
-    );
+    });
 
   }
 
 
+  /*
+    CLASSES
+  */
+
   if (scheduleType === 'classes') {
 
-    cellContent = (
+    return entries.map((entry, index) => (
 
-      <div className="schedule-cell schedule-cell-green">
+      <div
+        key={index}
+        className="schedule-cell schedule-cell-green mb-1"
+      >
 
         <div className="font-bold text-green-800 text-sm sm:text-base">
           {entry.course}
@@ -205,16 +336,23 @@ if (
 
       </div>
 
-    );
+    ));
 
   }
 
 
+  /*
+    LOCAUX
+  */
+
   if (scheduleType === 'rooms') {
 
-    cellContent = (
+    return entries.map((entry, index) => (
 
-      <div className="schedule-cell schedule-cell-purple">
+      <div
+        key={index}
+        className="schedule-cell schedule-cell-purple mb-1"
+      >
 
         <div className="font-bold text-purple-800 text-sm sm:text-base">
           {entry.course}
@@ -230,17 +368,14 @@ if (
 
       </div>
 
-    );
+    ));
 
   }
 
 
-  scheduleGrid[day][hour] = cellContent;
-}
+  return null;
 
-});
-
-let modalTitle = '';
+};
 
 switch (scheduleType) {
 
@@ -370,7 +505,9 @@ return (
                     className="p-1 sm:p-2 text-sm text-gray-800 align-top border-r border-b border-gray-300"
                   >
 
-                    {scheduleGrid[dayKey][hourKey]}
+                    {renderScheduleCell(
+  scheduleGrid[dayKey][hourKey]
+)}
 
                   </td>
 

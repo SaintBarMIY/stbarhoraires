@@ -1430,7 +1430,8 @@ function App() {
 
             const profHoursCounter =
               {};
-
+            const profUniqueSlots =
+              {};
 
             const lines =
               textContent.split(
@@ -1608,21 +1609,43 @@ function App() {
 
                 /* HEURES PROFESSEURS */
 
-                profHoursCounter[
-                  profSigle
-                ] =
-                  (
-                    profHoursCounter[
-                      profSigle
-                    ] || 0
-                  ) + 1;
+               if (
+  !profUniqueSlots[
+    profSigle
+  ]
+) {
+
+  profUniqueSlots[
+    profSigle
+  ] = new Set();
+
+}
+
+profUniqueSlots[
+  profSigle
+].add(
+  day + '-' + hour
+);
 
 
                 importedLines++;
 
               }
             );
+        Object.keys(
+          profUniqueSlots
+        ).forEach(
+          (profSigle) => {
 
+            profHoursCounter[
+              profSigle
+            ] =
+              profUniqueSlots[
+                profSigle
+              ].size;
+
+          }
+        );
 
             if (
               importedLines === 0
